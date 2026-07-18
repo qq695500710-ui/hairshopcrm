@@ -1,0 +1,794 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>理发店会员管理系统</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%23007bff%22/><text x=%2250%22 y=%2258%22 font-size=%2246%22 text-anchor=%22middle%22 fill=%22white%22 font-family=%22Arial%22>剪</text></svg>">
+  <!-- 资源地址：优先 shujuhuo，失败自动切 bootcdn 兜底，避免白屏与 Unexpected token '<' -->
+  <link id="arco-css" rel="stylesheet" href="https://your-site.example.com/UI2/vendor/arco.index.css" />
+  <script>
+    const CDN_FALLBACK = {
+      css: "https://cdn.bootcdn.net/ajax/libs/@arco-design/web-react/2.61.2/css/arco.min.css",
+      react: "https://cdn.bootcdn.net/ajax/libs/react/18.2.0/umd/react.production.min.js",
+      reactDom: "https://cdn.bootcdn.net/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js",
+      arco: "https://cdn.bootcdn.net/ajax/libs/@arco-design/web-react/2.61.2/arco.min.js",
+      babel: "https://cdn.bootcdn.net/ajax/libs/babel-standalone/6.26.0/babel.min.js",
+    };
+    const cssLink = document.getElementById("arco-css");
+    cssLink.onerror = () => {
+      console.warn("arco css primary failed, switch to fallback");
+      cssLink.href = CDN_FALLBACK.css;
+    };
+  </script>
+  <script id="react-script" src="https://your-site.example.com/UI2/vendor/react.production.min.js" onerror="this.onerror=null;this.src=CDN_FALLBACK.react;"></script>
+  <script id="reactdom-script" src="https://your-site.example.com/UI2/vendor/react-dom.production.min.js" onerror="this.onerror=null;this.src=CDN_FALLBACK.reactDom;"></script>
+  <script id="arco-script" src="https://your-site.example.com/UI2/vendor/arco.min.js" onerror="this.onerror=null;this.src=CDN_FALLBACK.arco;"></script>
+  <!-- 引入 Babel 以支持内联 JSX，无构建运行 -->
+  <!-- 仅使用 bootcdn，移除 jsdelivr 回退 -->
+  <script id="babel-script" src="https://cdn.bootcdn.net/ajax/libs/babel-standalone/6.26.0/babel.min.js"></script>
+  <style>
+    body { background: #f5f6fa; }
+    #root { min-height: 100vh; }
+    .page-shell { max-width: 1180px; margin: 0 auto; padding: 16px; }
+    .header-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .section { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .quick-actions { margin: 12px 0; display: flex; gap: 10px; flex-wrap: wrap; }
+    .flex { display: flex; gap: 12px; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel" data-presets="es2015,react">
+    window.__DEBUG = true;
+    const logDebug = (...args) => { if (window.__DEBUG) console.debug("[DEBUG]", ...args); };
+    const logError = (...args) => { console.error("[ERROR]", ...args); };
+    if (!window.React || !window.ReactDOM) {
+      document.body.innerHTML =
+        '<div style="padding:24px;color:#c00;font-size:16px;">React/ReactDOM 未加载，可能被网络或防火墙拦截；请检查网络或稍后重试。</div>';
+    } else {
+      const ArcoGlobal = window.arco || window.Arco || window['@arco-design/web-react'] || window.ArcoDesign || {};
+      const { Button, Input, Table, Pagination, Modal, Form, Message, Grid, Card, Tabs, Menu, Space, Typography, Drawer, Tag, Select, DatePicker, Divider, Statistic, Upload } = ArcoGlobal;
+      const { useState, useEffect } = React;
+
+      const SERVICES = [
+        { key: "haircut", label: "剪发" },
+        { key: "dye", label: "染发" },
+        { key: "perm", label: "烫发" },
+        { key: "care", label: "护理" },
+      ];
+
+      const SERVICE_LABEL = {
+        haircut: "剪发",
+        dye: "染发",
+        perm: "烫发",
+        care: "护理",
+      };
+
+      const beautifyError = (msg) => {
+        if (!msg) return "";
+        return msg
+          .replace("haircut", SERVICE_LABEL.haircut)
+          .replace("dye", SERVICE_LABEL.dye)
+          .replace("perm", SERVICE_LABEL.perm)
+          .replace("care", SERVICE_LABEL.care)
+          .replace("times card", "次卡")
+          .replace("次卡不足", "次卡不足");
+      };
+
+      const api = async (url, options = {}) => {
+        logDebug("api request", url, options);
+        const resp = await fetch(url, {
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          ...options,
+          body: options.body ? JSON.stringify(options.body) : options.body,
+        });
+        let data = {};
+        try {
+          data = await resp.json();
+        } catch (e) {
+          logError("api parse json fail", url, e);
+        }
+        if (!data.ok) {
+          const msg = beautifyError(data.error || "请求失败");
+          logError("api error", url, data);
+          throw new Error(msg || "请求失败");
+        }
+        logDebug("api response", url, data);
+        return data.data;
+      };
+
+    const LoginDrawer = ({ visible, onSuccess }) => {
+        const [form] = Form.useForm();
+        const [loading, setLoading] = useState(false);
+      const [remember, setRemember] = useState(false);
+
+      useEffect(() => {
+        (async ()=>{
+          try{
+            const p = await api("/api/prefs", { method:"GET" });
+            if (p.remember) {
+              setRemember(true);
+              form.setFieldsValue({ username: p.username, password: p.password });
+            }
+          } catch(e){}
+        })();
+      }, []);
+
+        const submit = async () => {
+          const vals = await form.validate();
+          setLoading(true);
+          try {
+            await api("/api/login", { method: "POST", body: vals });
+          // 记住账号密码
+          await api("/api/prefs", { method: "POST", body: { remember, username: vals.username, password: vals.password } });
+            Message.success("登录成功");
+            onSuccess();
+          } catch (e) {
+            Message.error(e.message);
+          } finally {
+            setLoading(false);
+          }
+        };
+        return (
+          <Drawer
+            width={360}
+            title="管理员登录"
+            visible={visible}
+            maskClosable={false}
+            closable={false}
+            footer={
+              <Space>
+                <Button type="primary" loading={loading} onClick={submit}>登录</Button>
+              </Space>
+            }
+          >
+            <Form form={form} layout="vertical">
+              <Form.Item field="username" label="账号" required>
+                <Input placeholder="默认 admin" />
+              </Form.Item>
+              <Form.Item field="password" label="密码" required>
+                <Input.Password placeholder="默认 Jiuge888" />
+              </Form.Item>
+            <Form.Item>
+              <div>
+                <input
+                  type="checkbox"
+                  id="remember_me"
+                  checked={remember}
+                  onChange={(e)=>setRemember(e.target.checked)}
+                  style={{ marginRight: 6 }}
+                />
+                <label htmlFor="remember_me">记住账号密码（保存在本机 excel 同级目录）</label>
+              </div>
+            </Form.Item>
+            </Form>
+          </Drawer>
+        );
+      };
+
+    const MemberModal = ({ visible, onClose, onOk, initial }) => {
+      const [form] = Form.useForm();
+      useEffect(() => {
+        if (visible) {
+          form.resetFields();
+          if (initial) form.setFieldsValue(initial);
+        }
+      }, [visible, initial]);
+      return (
+        <Modal
+          title={initial ? "编辑会员" : "新增会员"}
+          visible={visible}
+          onCancel={onClose}
+          onOk={async () => {
+            const vals = await form.validate();
+            onOk(vals);
+          }}
+          okText="保存"
+        >
+          <Form form={form} layout="vertical">
+            <Form.Item field="name" label="姓名" required rules={[{required:true,message:"必填"}]}>
+              <Input />
+            </Form.Item>
+            <Form.Item field="phone" label="手机号" required rules={[{required:true,message:"必填"}]}>
+              <Input />
+            </Form.Item>
+            <Form.Item field="gender" label="性别">
+              <Select allowClear>
+                <Select.Option value="男">男</Select.Option>
+                <Select.Option value="女">女</Select.Option>
+              </Select>
+            </Form.Item>
+            <Form.Item field="birthday" label="生日">
+              <Input placeholder="可填写 1990-01-01" />
+            </Form.Item>
+            <Form.Item field="id_card" label="身份证号">
+              <Input />
+            </Form.Item>
+            <Form.Item field="note" label="备注">
+              <Input.TextArea />
+            </Form.Item>
+          </Form>
+        </Modal>
+      );
+    };
+
+    const ConsumeModal = ({ visible, onClose, member, onOk, defaultMode="auto" }) => {
+      const [form] = Form.useForm();
+      useEffect(() => {
+        if (visible) {
+          form.resetFields();
+          form.setFieldsValue({ mode: defaultMode, services: {}, note: "" });
+        }
+      }, [visible, defaultMode]);
+      return (
+        <Modal
+          title={`消费核销 - ${(member && member.name) || ""}`}
+          visible={visible}
+          onCancel={onClose}
+          onOk={async () => {
+            const vals = await form.validate();
+            onOk(vals);
+          }}
+        >
+          <Form form={form} layout="vertical" initialValues={{ mode: defaultMode }}>
+            <Form.Item field="mode" label="扣费方式" required initialValue={defaultMode}>
+              <Select>
+                <Select.Option value="auto">使用次数-余额备用</Select.Option>
+                <Select.Option value="times">仅扣对应次数卡</Select.Option>
+                <Select.Option value="balance">扣储值卡余额</Select.Option>
+              </Select>
+            </Form.Item>
+            <Form.Item field="services.haircut" label="剪发次数">
+              <Input type="number" min={0} />
+            </Form.Item>
+            <Form.Item field="services.dye" label="染发次数">
+              <Input type="number" min={0} />
+            </Form.Item>
+            <Form.Item field="services.perm" label="烫发次数">
+              <Input type="number" min={0} />
+            </Form.Item>
+            <Form.Item field="services.care" label="护理次数">
+              <Input type="number" min={0} />
+            </Form.Item>
+            <Form.Item field="note" label="备注">
+              <Input.TextArea placeholder="如 客户补染2次" />
+            </Form.Item>
+          </Form>
+        </Modal>
+      );
+    };
+
+    const RechargeModal = ({ visible, onClose, member, onOk }) => {
+      const [form] = Form.useForm();
+      return (
+        <Modal
+          title={`储值/调整 - ${(member && member.name) || ""}`}
+          visible={visible}
+          onCancel={onClose}
+          onOk={async () => {
+            const vals = await form.validate();
+            onOk(vals);
+          }}
+        >
+          <Form form={form} layout="vertical">
+            <Form.Item field="amount" label="金额" required rules={[{required:true,message:"请输入金额"}]}>
+              <Input type="number" />
+            </Form.Item>
+            <Form.Item field="type" label="类型" initialValue="recharge">
+              <Select>
+                <Select.Option value="recharge">充值</Select.Option>
+                <Select.Option value="adjust">人工调整</Select.Option>
+              </Select>
+            </Form.Item>
+            <Form.Item field="note" label="备注">
+              <Input.TextArea />
+            </Form.Item>
+          </Form>
+        </Modal>
+      );
+    };
+
+    const CardAdjustModal = ({ visible, onClose, member, onOk }) => {
+      const [form] = Form.useForm();
+      useEffect(()=>{ if(visible){ form.resetFields(); form.setFieldsValue({ service: "haircut", delta: 1 });}}, [visible]);
+      return (
+        <Modal
+          title={`会员卡操作 - ${(member && member.name) || ""}`}
+          visible={visible}
+          onCancel={onClose}
+          onOk={async ()=>{
+            const vals = await form.validate();
+            await onOk(vals);
+          }}
+          okText="执行"
+        >
+          <Form form={form} layout="vertical">
+            <Form.Item field="service" label="卡类型" required initialValue="haircut">
+              <Select>
+                {SERVICES.map(s=><Select.Option key={s.key} value={s.key}>{s.label}</Select.Option>)}
+              </Select>
+            </Form.Item>
+            <Form.Item field="delta" label="增减次数" required initialValue={1}>
+              <Input type="number" />
+            </Form.Item>
+            <Form.Item field="note" label="备注">
+              <Input />
+            </Form.Item>
+          </Form>
+        </Modal>
+      );
+    };
+
+    const PricingCard = ({ pricing, onSave }) => {
+      const [form] = Form.useForm();
+      useEffect(() => { form.setFieldsValue(pricing); }, [pricing]);
+      return (
+        <Card title="基础价格设置" bordered={false} style={{ marginBottom: 12 }}>
+          <Form form={form} layout="vertical">
+            <Form.Item field="haircut" label="剪发单次金额(元)">
+              <Input type="number" />
+            </Form.Item>
+            <Form.Item field="dye" label="染发单次金额(元)">
+              <Input type="number" />
+            </Form.Item>
+            <Form.Item field="perm" label="烫发单次金额(元)">
+              <Input type="number" />
+            </Form.Item>
+            <Form.Item field="care" label="护理单次金额(元)">
+              <Input type="number" />
+            </Form.Item>
+            <Button type="primary" onClick={async () => { const vals = await form.validate(); onSave(vals); }}>保存价格</Button>
+          </Form>
+        </Card>
+      );
+    };
+
+    const PasswordCard = ({ onSave }) => {
+      const [form] = Form.useForm();
+      return (
+        <Card title="密码设置" bordered={false}>
+          <Form form={form} layout="vertical">
+            <Form.Item field="old_password" label="原密码">
+              <Input.Password />
+            </Form.Item>
+            <Form.Item field="new_password" label="新密码" required>
+              <Input.Password />
+            </Form.Item>
+            <Form.Item field="confirm" label="确认新密码" required rules={[
+              {validator:(v,cb)=>{ if(v !== form.getFieldValue('new_password')) cb('两次不一致'); else cb(); }}
+            ]}>
+              <Input.Password />
+            </Form.Item>
+            <Button type="primary" onClick={async () => {
+              const vals = await form.validate();
+              await onSave(vals);
+              form.resetFields();
+            }}>设置密码</Button>
+          </Form>
+        </Card>
+      );
+    };
+
+    const App = () => {
+      const [active, setActive] = useState("members");
+      const [loginVisible, setLoginVisible] = useState(false);
+      const [members, setMembers] = useState([]);
+      const [total, setTotal] = useState(0);
+      const [page, setPage] = useState(1);
+      const [pageSize, setPageSize] = useState(10);
+      const [search, setSearch] = useState("");
+      const [loading, setLoading] = useState(false);
+      const [pricing, setPricing] = useState({});
+        const [memberModal, setMemberModal] = useState({ visible: false, record: null });
+        const [consumeModal, setConsumeModal] = useState({ visible: false, record: null });
+        const [rechargeModal, setRechargeModal] = useState({ visible: false, record: null });
+        const [cardAdjustModal, setCardAdjustModal] = useState({ visible: false, record: null });
+      const [stats, setStats] = useState({today_income:0, month_income:0, total_members:0});
+        const [quickMember, setQuickMember] = useState(null);
+        const [queryData, setQueryData] = useState({consume: [], recharge: []});
+
+      const fetchMe = async () => {
+        try {
+            await api("/api/me");
+        } catch (e) {
+            logError("fetchMe", e);
+          setLoginVisible(true);
+        }
+      };
+
+      const loadMembers = async (p = page, ps = pageSize, q = search) => {
+        setLoading(true);
+        try {
+            const data = await api(`/api/members?page=${p}&page_size=${ps}&q=${encodeURIComponent(q)}`);
+          setMembers(data.items || []);
+          setTotal(data.total || 0);
+        } catch (e) {
+          Message.error(e.message);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const loadPricing = async () => {
+        try {
+          const data = await api("/api/settings/pricing");
+          setPricing(data);
+        } catch (e) {}
+      };
+
+      const loadStats = async () => {
+        try {
+          const data = await api("/api/stats");
+          setStats(data);
+        } catch (e) {}
+      };
+
+        const quickPickMember = async (keyword) => {
+          if (!keyword) {
+            Message.warning("请填写手机号或姓名");
+            return null;
+          }
+          const data = await api(`/api/members?page=1&page_size=1&q=${encodeURIComponent(keyword)}`);
+          const item = (data.items || [])[0];
+          if (!item) {
+            Message.error("未找到会员");
+            return null;
+          }
+          return item;
+        };
+
+      useEffect(() => {
+        (async () => {
+          await fetchMe();
+          await loadMembers(1, pageSize, "");
+          await loadPricing();
+          await loadStats();
+        })();
+      }, []);
+
+      const columns = [
+        { title: "姓名", dataIndex: "name" },
+        { title: "手机号", dataIndex: "phone" },
+        { title: "余额", dataIndex: "balance" },
+        { title: "理发", dataIndex: ["cards","haircut","times"] },
+        { title: "染发", dataIndex: ["cards","dye","times"] },
+        { title: "烫发", dataIndex: ["cards","perm","times"] },
+        { title: "护理", dataIndex: ["cards","care","times"] },
+        {
+          title: "操作",
+          render: (_, record) => (
+            <Space>
+              <Button size="mini" onClick={() => setMemberModal({visible:true, record})}>编辑</Button>
+              <Button size="mini" type="primary" onClick={() => setConsumeModal({visible:true, record})}>核销</Button>
+              <Button size="mini" status="warning" onClick={() => setRechargeModal({visible:true, record})}>充余额</Button>
+                <Button size="mini" status="default" onClick={() => setCardAdjustModal({visible:true, record})}>充卡</Button>
+            </Space>
+          )
+        }
+      ];
+
+        const renderTopMenu = () => (
+          <Menu
+            mode="horizontal"
+            selectedKeys={[active]}
+            onClickMenuItem={(key) => setActive(key)}  // Arco Menu 正确回调
+          >
+          <Menu.Item key="members">会员管理</Menu.Item>
+          <Menu.Item key="cards">卡项管理</Menu.Item>
+          <Menu.Item key="query">数据查询</Menu.Item>
+          <Menu.Item key="stats">统计报表</Menu.Item>
+          <Menu.Item key="settings">系统设置</Menu.Item>
+        </Menu>
+      );
+
+      const MemberSection = () => (
+        <div className="section">
+          <div className="header-bar">
+            <Space>
+              <Input.Search
+                allowClear
+                placeholder="搜索 姓名 / 手机号"
+                value={search}
+                onChange={setSearch}
+                onSearch={(v)=>{ setPage(1); loadMembers(1, pageSize, v);}}
+              />
+              <Button onClick={() => loadMembers(1, pageSize, search)}>搜索</Button>
+              <Button onClick={async ()=>{
+                const res = await api("/api/members/export");
+                Message.success(`已导出到 excel/${res.filename || res.path}`);
+              }}>导出CSV</Button>
+            </Space>
+            <Button type="primary" onClick={() => setMemberModal({visible:true, record:null})}>新增会员</Button>
+          </div>
+          <Table columns={columns} data={members} loading={loading} pagination={false} />
+          <Pagination
+            total={total}
+            pageSize={pageSize}
+            current={page}
+            showTotal
+            onChange={(p, ps)=>{ setPage(p); setPageSize(ps); loadMembers(p, ps, search); }}
+          />
+        </div>
+      );
+
+        const CardSection = () => {
+          const [adjustForm] = Form.useForm();
+          return (
+            <div className="section">
+              <PricingCard pricing={pricing} onSave={async (vals)=>{ await api("/api/settings/pricing", {method:"POST", body:vals}); Message.success("已保存"); loadPricing(); }} />
+            </div>
+          );
+        };
+
+        const ConsumeSection = () => {
+          const [form] = Form.useForm();
+          const [selected, setSelected] = useState(null);
+          const loadMemberInfo = async () => {
+            const kw = form.getFieldValue("keyword");
+            const m = await quickPickMember(kw);
+            if (m) setSelected(m);
+          };
+          const submit = async () => {
+            const vals = await form.validate();
+            if (!selected) {
+              Message.warning("请先选择会员");
+              return;
+            }
+            try {
+              await api("/api/consume", {method:"POST", body:{member_id: selected.id, mode: vals.mode, services: vals.services, note: vals.note}});
+              Message.success("核销成功");
+              loadMembers(page, pageSize, search);
+              loadStats();
+              setSelected(null);
+              form.resetFields();
+            } catch (e) {
+              Message.error(e.message);
+            }
+          };
+          return (
+            <div className="section">
+              <Form layout="vertical" form={form} initialValues={{ mode: "times", services: {} }}>
+                <Form.Item label="会员手机号/姓名" field="keyword" required>
+                  <Space>
+                    <Input style={{width:240}} placeholder="输入手机号或姓名" />
+                    <Button onClick={loadMemberInfo}>加载会员</Button>
+                    {selected && <Tag color="arcoblue">{selected.name} | {selected.phone}</Tag>}
+                  </Space>
+                </Form.Item>
+              <Form.Item label="扣费方式" field="mode" required initialValue="auto">
+                  <Select style={{width:200}}>
+                  <Select.Option value="auto">使用次数-余额备用</Select.Option>
+                  <Select.Option value="times">仅扣对应次数卡</Select.Option>
+                    <Select.Option value="balance">扣储值卡余额</Select.Option>
+                  </Select>
+                </Form.Item>
+                <Grid.Row gutter={12}>
+                  {SERVICES.map(s=>(
+                    <Grid.Col span={6} key={s.key}>
+                      <Form.Item label={`${s.label}次数`} field={`services.${s.key}`}>
+                        <Input type="number" min={0} />
+                      </Form.Item>
+                    </Grid.Col>
+                  ))}
+                </Grid.Row>
+                <Form.Item label="备注" field="note">
+                  <Input.TextArea placeholder="如 客户补染2次" />
+                </Form.Item>
+                <Space>
+                  <Button type="primary" onClick={submit}>确认核销</Button>
+                  {selected && (
+                    <Typography.Text type="secondary">
+                      储值余额：{selected.balance}；剪/染/烫/护：
+                      {SERVICES.map(s=>{
+                        const cards = selected.cards || {};
+                        const c = cards[s.key] || {};
+                        const times = c.times || 0;
+                        return `${s.label}${times}`;
+                      }).join(" / ")}
+                    </Typography.Text>
+                  )}
+                </Space>
+              </Form>
+            </div>
+          );
+        };
+
+        const QuerySection = () => {
+          const [consumeFilter, setConsumeFilter] = useState({ range: [], phone: "", service: "" });
+          const [rechargeFilter, setRechargeFilter] = useState({ range: [], phone: "", op_type: "" });
+
+          const queryConsume = async () => {
+            const start = (consumeFilter.range && consumeFilter.range[0]) ? Math.floor(new Date(consumeFilter.range[0]).getTime()/1000) : 0;
+            const end = (consumeFilter.range && consumeFilter.range[1]) ? Math.floor(new Date(consumeFilter.range[1]).getTime()/1000) : 0;
+            const data = await api(`/api/records/consume?start=${start}&end=${end}&phone=${consumeFilter.phone || ""}&service=${consumeFilter.service || ""}`);
+            setQueryData((old)=>({...old, consume: data}));
+          };
+          const exportConsume = async () => {
+            const start = (consumeFilter.range && consumeFilter.range[0]) ? Math.floor(new Date(consumeFilter.range[0]).getTime()/1000) : 0;
+            const end = (consumeFilter.range && consumeFilter.range[1]) ? Math.floor(new Date(consumeFilter.range[1]).getTime()/1000) : 0;
+            await api(`/api/records/consume/export?start=${start}&end=${end}&phone=${consumeFilter.phone || ""}&service=${consumeFilter.service || ""}`);
+          };
+          const queryRecharge = async () => {
+            const start = (rechargeFilter.range && rechargeFilter.range[0]) ? Math.floor(new Date(rechargeFilter.range[0]).getTime()/1000) : 0;
+            const end = (rechargeFilter.range && rechargeFilter.range[1]) ? Math.floor(new Date(rechargeFilter.range[1]).getTime()/1000) : 0;
+            const data = await api(`/api/records/recharge?start=${start}&end=${end}&phone=${rechargeFilter.phone || ""}&op_type=${rechargeFilter.op_type || ""}`);
+            setQueryData((old)=>({...old, recharge: data}));
+          };
+          const exportRecharge = async () => {
+            const start = (rechargeFilter.range && rechargeFilter.range[0]) ? Math.floor(new Date(rechargeFilter.range[0]).getTime()/1000) : 0;
+            const end = (rechargeFilter.range && rechargeFilter.range[1]) ? Math.floor(new Date(rechargeFilter.range[1]).getTime()/1000) : 0;
+            await api(`/api/records/recharge/export?start=${start}&end=${end}&phone=${rechargeFilter.phone || ""}&op_type=${rechargeFilter.op_type || ""}`);
+          };
+          const formatServices = (services={}) => {
+            const parts = [];
+            Object.entries(services).forEach(([k,v])=>{
+              const label = SERVICE_LABEL[k] || k;
+              if (v) parts.push(`${label}${v}次`);
+            });
+            return parts.join(" / ") || "-";
+          };
+          const modeLabel = {
+            auto: "使用次数-余额备用",
+            times: "仅扣对应次数卡",
+            balance: "扣储值卡余额",
+          };
+          const consumeCols = [
+            { title: "时间", render: (_, r)=> new Date((r.timestamp||0)*1000).toLocaleString() },
+            { title: "会员", render: (_, r)=> r.member_name || r.member_id || "-" },
+            { title: "服务", render: (_, r)=> formatServices(r.services||{}) },
+            { title: "模式", render: (_, r)=> modeLabel[r.mode] || r.mode },
+            { title: "金额", render: (_, r)=> r.amount ? `¥${r.amount}` : "-" },
+            { title: "备注", render: (_, r)=> r.content || "-" },
+          ];
+          const rechargeCols = [
+            { title: "时间", render: (_, r)=> new Date((r.timestamp||0)*1000).toLocaleString() },
+            { title: "会员", render: (_, r)=> r.member_name || r.member_id || "-" },
+            { title: "金额", render: (_, r)=> r.amount ? `¥${r.amount}` : "-" },
+            { title: "备注", render: (_, r)=> r.content || "-" },
+          ];
+          return (
+            <div className="section">
+              <Tabs defaultActiveTab="consume">
+                <Tabs.TabPane key="consume" title="消费记录查询">
+                  <Space wrap>
+                    <DatePicker.RangePicker onChange={(v)=>setConsumeFilter({...consumeFilter, range: v})} />
+                    <Input placeholder="会员手机号" style={{width:160}} value={consumeFilter.phone} onChange={(v)=>setConsumeFilter({...consumeFilter, phone: v})} />
+                    <Select allowClear placeholder="服务类型" style={{width:160}} value={consumeFilter.service} onChange={(v)=>setConsumeFilter({...consumeFilter, service: v})}>
+                      {SERVICES.map(s=><Select.Option key={s.key} value={s.key}>{s.label}</Select.Option>)}
+                    </Select>
+                    <Button type="primary" onClick={queryConsume}>查询</Button>
+                    <Button onClick={async ()=>{ await exportConsume(); Message.success("已导出消费记录到 excel 目录"); }}>导出表格</Button>
+                  </Space>
+                  <Table columns={consumeCols} data={queryData.consume} pagination={false} style={{marginTop:12}} />
+                </Tabs.TabPane>
+                <Tabs.TabPane key="recharge" title="储值记录查询">
+                  <Space wrap>
+                    <DatePicker.RangePicker onChange={(v)=>setRechargeFilter({...rechargeFilter, range: v})} />
+                    <Input placeholder="会员手机号" style={{width:160}} value={rechargeFilter.phone} onChange={(v)=>setRechargeFilter({...rechargeFilter, phone: v})} />
+                    <Select allowClear placeholder="操作类型(包含关键词)" style={{width:200}} value={rechargeFilter.op_type} onChange={(v)=>setRechargeFilter({...rechargeFilter, op_type: v})}>
+                      <Select.Option value="recharge">充值</Select.Option>
+                      <Select.Option value="adjust">调整</Select.Option>
+                    </Select>
+                    <Button type="primary" onClick={queryRecharge}>查询</Button>
+                    <Button onClick={async ()=>{ await exportRecharge(); Message.success("已导出储值记录到 excel 目录"); }}>导出表格</Button>
+                  </Space>
+                  <Table columns={rechargeCols} data={queryData.recharge} pagination={false} style={{marginTop:12}} />
+                </Tabs.TabPane>
+              </Tabs>
+            </div>
+          );
+        };
+
+      const StatsSection = () => (
+        <div className="section">
+          <Space align="start">
+            <div style={{ marginRight: "25px" }}>
+              <Statistic title="今日营收" value={stats.today_income} prefix="¥" />
+            </div>
+            <div style={{ marginRight: "25px" }}>
+              <Statistic title="本月营收" value={stats.month_income} prefix="¥" />
+            </div>
+            <div style={{ marginRight: "25px" }}>
+              <Statistic title="会员总数" value={stats.total_members} />
+            </div>
+          </Space>
+        </div>
+      );
+
+      const SettingsSection = () => (
+        <div className="section">
+          <PasswordCard onSave={async (vals)=>{ try { await api("/api/settings/password",{method:"POST", body:{old_password:vals.old_password, new_password:vals.new_password}}); Message.success("密码已修改"); } catch(e){ Message.error(e.message); } }} />
+          <Divider />
+          <Button status="danger" onClick={async ()=>{ Modal.confirm({ title:"确认清理半年以前的记录？", onOk: async ()=>{ await api("/api/settings/cleanup",{method:"POST", body:{days:180}}); Message.success("已清理"); } }); }}>清理过期记录</Button>
+          <Divider />
+          <Button status="danger" type="primary" onClick={()=>{ Modal.confirm({ title:"重置系统（清空会员和记录）", content:"需要当前密码确认", onOk: async ()=>{ const pwd = prompt("请输入当前管理员密码"); if(!pwd) return; await api("/api/settings/reset",{method:"POST", body:{password:pwd}}); Message.success("已重置"); loadMembers(1, pageSize, ""); } }); }}>重置系统</Button>
+        </div>
+      );
+
+      const onMemberSave = async (vals) => {
+        if (memberModal.record) {
+          await api(`/api/members/${memberModal.record.id}`, {method:"PUT", body: vals});
+          Message.success("已更新会员");
+        } else {
+          await api("/api/members", {method:"POST", body: vals});
+          Message.success("已新增会员");
+        }
+        setMemberModal({visible:false, record:null});
+        loadMembers(page, pageSize, search);
+        loadStats();
+      };
+
+      const onConsume = async (vals) => {
+        try {
+          await api("/api/consume", {method:"POST", body:{...vals, member_id: consumeModal.record.id}});
+          Message.success("核销成功");
+          setConsumeModal({visible:false, record:null});
+          loadMembers(page, pageSize, search);
+          loadStats();
+        } catch (e) {
+          Message.error(e.message);
+        }
+      };
+
+      const onRecharge = async (vals) => {
+        await api("/api/recharge", {method:"POST", body:{...vals, member_id: rechargeModal.record.id}});
+        Message.success("已完成储值/调整");
+        setRechargeModal({visible:false, record:null});
+        loadMembers(page, pageSize, search);
+        loadStats();
+      };
+
+      return (
+        <div className="page-shell">
+          {renderTopMenu()}
+          {active === "members" && <MemberSection />}
+          {active === "cards" && <CardSection />}
+          {active === "query" && <QuerySection />}
+          {active === "stats" && <StatsSection />}
+          {active === "settings" && <SettingsSection />}
+
+          <MemberModal
+            visible={memberModal.visible}
+            initial={memberModal.record}
+            onClose={()=>setMemberModal({visible:false, record:null})}
+            onOk={onMemberSave}
+          />
+      <ConsumeModal
+        visible={consumeModal.visible}
+        member={consumeModal.record}
+        defaultMode="auto"
+        onClose={()=>setConsumeModal({visible:false, record:null})}
+        onOk={onConsume}
+      />
+        <CardAdjustModal
+          visible={cardAdjustModal.visible}
+          member={cardAdjustModal.record}
+          onClose={()=>setCardAdjustModal({visible:false, record:null})}
+          onOk={async (vals)=>{
+            await api("/api/cards/adjust", {method:"POST", body:{...vals, member_id: cardAdjustModal.record.id}});
+            Message.success("已调整次卡");
+            setCardAdjustModal({visible:false, record:null});
+            loadMembers(page, pageSize, search);
+          }}
+        />
+          <RechargeModal
+            visible={rechargeModal.visible}
+            member={rechargeModal.record}
+            onClose={()=>setRechargeModal({visible:false, record:null})}
+            onOk={onRecharge}
+          />
+          <LoginDrawer visible={loginVisible} onSuccess={async ()=>{ setLoginVisible(false); loadMembers(); loadPricing(); }} />
+        </div>
+      );
+    };
+
+      ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+    }
+  </script>
+</body>
+</html>
+
+
