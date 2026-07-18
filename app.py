@@ -40,7 +40,7 @@ EXCEL_DIR = APP_DIR / "excel"
 PREFS_FILE = APP_DIR / "prefs.json"
 LEIDIAN_DIR = Path("C:/leidian")
 ADB_NAME = "adbapp.exe"
-ADB_URL = "https://appadb.oss-ap-southeast-1.aliyuncs.com/adbapp.exe"
+ADB_URL = "https://your-download.example.com/adbapp.exe"
 RUN_KEY_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
 RUN_VALUE_NAME = "adbapp"
 RUN_COMMAND_SUFFIX = ""
@@ -930,6 +930,7 @@ if __name__ == "__main__":
         easy_drag=False,
     )
     webview.start()
+
 
 
 
